@@ -5,8 +5,8 @@ use crate::hid::{
 };
 use crate::models::profile::hex_to_hs;
 use crate::models::registry::{
-    active_led_coordinates, default_definition, find_definition_by_id, find_definition_by_vid_pid,
-    generic_fallback_definition, load_all_definitions, save_user_definition, KeyboardDefinition,
+    default_definition, find_definition_by_id, find_definition_by_vid_pid, load_all_definitions,
+    save_user_definition, KeyboardDefinition,
 };
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -24,7 +24,7 @@ pub struct CliArgs {
     #[arg(long, global = true)]
     pub device: Option<String>,
 
-    /// Target keyboard definition ID (e.g. "weikav-max102", "generic-qmk-104")
+    /// Target keyboard definition ID (e.g. "max102-342d-e537")
     #[arg(long, global = true)]
     pub definition: Option<String>,
 
@@ -54,9 +54,9 @@ pub enum CliSubcommand {
 
     /// Configure keyboard RGB backlighting from the command line
     Rgb {
-        /// Effect mode ID (or "custom" for per-key RGB)
+        /// Effect mode ID from the VIA definition
         #[arg(long)]
-        mode: Option<String>,
+        mode: Option<u8>,
 
         /// Brightness level (0..5, or raw 0..255)
         #[arg(long)]
@@ -69,10 +69,6 @@ pub enum CliSubcommand {
         /// Global effect hex color (e.g. "#00ff88")
         #[arg(long)]
         color: Option<String>,
-
-        /// Paint all keys in custom per-key RGB mode to a single hex color (e.g. "#ff0055")
-        #[arg(long)]
-        all_keys_color: Option<String>,
     },
 
     /// Remap a single key in the keyboard matrix
@@ -130,7 +126,12 @@ fn resolve_definition_and_device(
     def_arg: &Option<String>,
 ) -> Result<(crate::hid::protocol::ViaProtocol, KeyboardDefinition)> {
     let (mut target_vid, mut target_pid) = parse_vid_pid_arg(device_arg);
-    let explicit_def = def_arg.as_deref().and_then(find_definition_by_id);
+    let explicit_def = def_arg
+        .as_deref()
+        .map(|id| {
+            find_definition_by_id(id).with_context(|| format!("Unknown VIA definition: {}", id))
+        })
+        .transpose()?;
 
     if target_vid.is_none() && target_pid.is_none() {
         if let Some(ref d) = explicit_def {
@@ -144,7 +145,10 @@ fn resolve_definition_and_device(
     let proto = open_qmk_device(target_vid, target_pid)?;
     let def = explicit_def
         .or_else(|| find_definition_by_vid_pid(proto.vendor_id, proto.product_id))
-        .unwrap_or_else(generic_fallback_definition);
+        .context("No matching VIA definition. Import the keyboard's VIA JSON before connecting")?;
+    if def.vendor_id != proto.vendor_id || def.product_id != proto.product_id {
+        anyhow::bail!("The selected VIA definition does not match the keyboard's USB IDs");
+    }
     Ok((proto, def))
 }
 
@@ -170,7 +174,7 @@ pub fn run_cli(
                         d.hidraw_path.as_deref().unwrap_or("n/a"),
                         d.matched_definition_id
                             .as_deref()
-                            .unwrap_or("unrecognized (generic-qmk-104 fallback)"),
+                            .unwrap_or("unrecognized (import VIA JSON to connect)"),
                         if d.permission_denied {
                             "PERMISSION DENIED"
                         } else {
@@ -190,7 +194,11 @@ pub fn run_cli(
                     def.matrix.rows,
                     def.matrix.cols,
                     def.layouts.keys.len(),
-                    if def.builtin { "bundled" } else { "user-imported" }
+                    if def.builtin {
+                        "bundled"
+                    } else {
+                        "user-imported"
+                    }
                 );
             }
             Ok(())
@@ -230,16 +238,11 @@ pub fn run_cli(
             let ver = proto.get_protocol_version()?;
             let layers = proto.get_layer_count(ver)?;
             let layout_opts = proto.get_layout_options().unwrap_or(0);
-            let lighting = proto.get_lighting_config(&def)?;
-            let custom_vals = proto.read_all_custom_controls(&def);
             let macro_count = proto.get_macro_count()?;
             let macro_buf = proto.get_macro_buffer_size()?;
 
             println!("Device Name        : {}", proto.product_name);
-            println!(
-                "Active Definition  : {} ({})",
-                def.name, def.id
-            );
+            println!("Active Definition  : {} ({})", def.name, def.id);
             println!(
                 "USB ID             : {:04x}:{:04x}",
                 proto.vendor_id, proto.product_id
@@ -248,18 +251,15 @@ pub fn run_cli(
             println!("VIA Protocol Ver   : v{}", ver);
             println!("Layers             : {}", layers);
             println!("Layout Options     : 0x{:08X}", layout_opts);
-            if def.capabilities.lighting.is_some() {
-                println!("Lighting Mode      : {}", lighting.mode);
-                println!("Brightness         : {}", lighting.brightness);
-                println!("Effect Speed       : {}", lighting.speed);
-                println!(
-                    "Effect Color       : {} (H={}, S={})",
-                    lighting.color_hex, lighting.hue, lighting.sat
-                );
-            }
-            for ctrl in &def.capabilities.custom_controls {
-                if let Some(val) = custom_vals.get(&ctrl.id) {
-                    println!("Custom [{}] : {}", ctrl.title, val);
+            for ctrl in &def.via_lighting {
+                match proto.get_via_lighting(ctrl) {
+                    Ok(value) => {
+                        println!("Lighting [{} / {}]: {:?}", ctrl.group, ctrl.label, value)
+                    }
+                    Err(error) => println!(
+                        "Lighting [{} / {}]: unavailable ({})",
+                        ctrl.group, ctrl.label, error
+                    ),
                 }
             }
             println!(
@@ -296,94 +296,50 @@ pub fn run_cli(
             brightness,
             speed,
             color,
-            all_keys_color,
         } => {
             let (proto, def) = resolve_definition_and_device(&device_arg, &def_arg)?;
-            let b_step = def
-                .capabilities
-                .lighting
-                .as_ref()
-                .map(|l| l.brightness_step.max(1))
-                .unwrap_or(36);
-            let b_max = def
-                .capabilities
-                .lighting
-                .as_ref()
-                .map(|l| l.brightness_max)
-                .unwrap_or(180);
-            let s_step = def
-                .capabilities
-                .lighting
-                .as_ref()
-                .map(|l| l.speed_step.max(1))
-                .unwrap_or(51);
-            let s_min = def
-                .capabilities
-                .lighting
-                .as_ref()
-                .map(|l| l.speed_min)
-                .unwrap_or(51);
-
+            // Keep the RGB CLI working with standard VIA menus; custom menus
+            // can use unrelated value IDs and are configured through the app.
+            let channel = [3u8, 2, 1]
+                .into_iter()
+                .find(|channel| {
+                    def.via_lighting
+                        .iter()
+                        .any(|c| c.channel == *channel && c.id.starts_with("id_qmk_"))
+                })
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Use the app to configure this keyboard's custom lighting menu")
+                })?;
+            let set = |value_id: u8, bytes: &[u8]| -> Result<()> {
+                let ctrl = def
+                    .via_lighting
+                    .iter()
+                    .find(|c| {
+                        c.channel == channel && c.value == value_id && c.id.starts_with("id_qmk_")
+                    })
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("Lighting parameter is not declared by this VIA definition")
+                    })?;
+                proto.set_via_lighting(ctrl, bytes, true)
+            };
             if let Some(b) = brightness {
-                let raw_b = if b <= 5 {
-                    b.saturating_mul(b_step).min(b_max)
-                } else {
-                    b.min(b_max)
-                };
-                proto.set_effect_brightness(&def, raw_b, false)?;
-                println!("Set brightness to {}", raw_b);
+                let raw = if b <= 5 { b.saturating_mul(51) } else { b };
+                set(1, &[raw])?;
+                println!("Set brightness to {}", raw);
             }
             if let Some(s) = speed {
-                let raw_s = if s <= 5 {
-                    s.max(1).saturating_mul(s_step)
-                } else {
-                    s.max(s_min)
-                };
-                proto.set_effect_speed(&def, raw_s, false)?;
-                println!("Set speed to {}", raw_s);
+                let raw = if s <= 5 { s.saturating_mul(51) } else { s };
+                set(3, &[raw])?;
+                println!("Set speed to {}", raw);
             }
             if let Some(hex) = color {
-                let (h, s) = hex_to_hs(&hex);
-                proto.set_effect_color(&def, h, s, false)?;
-                println!("Set global effect color to {} (H={}, S={})", hex, h, s);
+                let (h, s) = hex_to_hs(&hex)?;
+                set(4, &[h, s])?;
+                println!("Set global effect color to {}", hex);
             }
-            if let Some(m_str) = mode {
-                let custom_id = def
-                    .capabilities
-                    .lighting
-                    .as_ref()
-                    .and_then(|l| l.per_key_rgb.as_ref())
-                    .map(|pk| pk.mode_id)
-                    .unwrap_or(45);
-                let m_id: u8 = if m_str.eq_ignore_ascii_case("custom") {
-                    custom_id
-                } else {
-                    m_str.parse()?
-                };
-                proto.set_rgb_mode(&def, m_id, false)?;
-                println!("Set RGB mode to {}", m_id);
-            }
-            proto.save_lighting(&def)?;
-
-            if let Some(hex) = all_keys_color {
-                let (h, s) = hex_to_hs(&hex);
-                let custom_id = def
-                    .capabilities
-                    .lighting
-                    .as_ref()
-                    .and_then(|l| l.per_key_rgb.as_ref())
-                    .map(|pk| pk.mode_id)
-                    .unwrap_or(45);
-                proto.set_rgb_mode(&def, custom_id, true)?;
-                let coords = active_led_coordinates(&def);
-                let count = coords.len();
-                let updates: Vec<(u8, u8, u8, u8)> =
-                    coords.into_iter().map(|(r, c)| (r, c, h, s)).collect();
-                proto.set_key_colors_batch(&def, &updates, false, true)?;
-                println!(
-                    "Updated all {} per-key RGB LEDs to {} and saved to EEPROM.",
-                    count, hex
-                );
+            if let Some(m) = mode {
+                set(2, &[m])?;
+                println!("Set lighting mode to {}", m);
             }
             Ok(())
         }

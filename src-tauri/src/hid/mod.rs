@@ -4,14 +4,12 @@ pub mod queue;
 
 use crate::hid::protocol::ViaProtocol;
 use crate::models::layout::{DEFAULT_LAYERS, RAW_HID_USAGE, RAW_HID_USAGE_PAGE};
-use crate::models::profile::{KeyboardProfile, LightingConfig, MacroSlot, PerKeyRgbCell};
-use crate::models::registry::{
-    active_led_coordinates, load_all_definitions, KeyboardDefinition,
-};
+use crate::models::profile::{KeyboardProfile, MacroSlot};
+use crate::models::registry::{load_all_definitions, KeyboardDefinition};
 use anyhow::{bail, Context, Result};
 use hidapi::HidApi;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -148,9 +146,7 @@ pub fn scan_qmk_devices() -> Vec<DetectedQmkDevice> {
         detected.push(DetectedQmkDevice {
             vendor_id: vid,
             product_id: pid,
-            product_name: matched
-                .map(|m| m.name.clone())
-                .unwrap_or(product_name),
+            product_name: matched.map(|m| m.name.clone()).unwrap_or(product_name),
             hidraw_path: Some(dev_path),
             matched_definition_id: matched.map(|m| m.id.clone()),
             is_unknown_device: matched.is_none(),
@@ -296,11 +292,7 @@ pub fn open_qmk_device(target_vid: Option<u16>, target_pid: Option<u16>) -> Resu
 }
 
 /// Installs the Linux udev rule for the given `vid:pid` (and all QMK `0xFF60` raw HID devices) using `pkexec`.
-pub fn install_linux_udev_rules_pkexec(
-    vid: u16,
-    pid: u16,
-    product_name: &str,
-) -> Result<String> {
+pub fn install_linux_udev_rules_pkexec(vid: u16, pid: u16, product_name: &str) -> Result<String> {
     #[cfg(not(target_os = "linux"))]
     {
         let _ = (vid, pid, product_name);
@@ -350,11 +342,11 @@ pub fn read_full_profile_from_device(
     let rows = def.matrix.rows;
     let cols = def.matrix.cols;
     let protocol_version = proto.get_protocol_version().unwrap_or(11);
-    let layers_count = proto.get_layer_count(protocol_version).unwrap_or(DEFAULT_LAYERS);
+    let layers_count = proto
+        .get_layer_count(protocol_version)
+        .unwrap_or(DEFAULT_LAYERS);
     let layout_options = proto.get_layout_options().unwrap_or(0);
     let layers = proto.read_all_layers(layers_count, rows, cols)?;
-    let lighting = proto.get_lighting_config(def).unwrap_or_default();
-    let per_key_rgb = proto.get_all_key_colors(def)?;
     let macros = proto.read_macros().unwrap_or_else(|_| {
         (0..16)
             .map(|i| MacroSlot {
@@ -364,12 +356,6 @@ pub fn read_full_profile_from_device(
             })
             .collect()
     });
-    let custom_control_values = proto.read_all_custom_controls(def);
-    let nkro_enabled = custom_control_values
-        .get("nkro")
-        .map(|&v| v != 0)
-        .unwrap_or(true);
-
     Ok(KeyboardProfile {
         schema_version: 2,
         name: profile_name.to_string(),
@@ -383,11 +369,17 @@ pub fn read_full_profile_from_device(
         cols,
         layout_options,
         layers,
-        lighting,
-        per_key_rgb,
         macros,
-        nkro_enabled,
-        custom_control_values,
+        via_lighting_values: def
+            .via_lighting
+            .iter()
+            .filter_map(|ctrl| {
+                proto
+                    .get_via_lighting(ctrl)
+                    .ok()
+                    .map(|v| (ctrl.id.clone(), v))
+            })
+            .collect(),
     })
 }
 
@@ -405,52 +397,22 @@ pub fn apply_full_profile_to_device(
         let _ = proto.set_layout_options(profile.layout_options);
     }
 
-    if def.capabilities.lighting.is_some() {
-        proto.set_effect_brightness(def, profile.lighting.brightness, false)?;
-        proto.set_effect_speed(def, profile.lighting.speed, false)?;
-        proto.set_effect_color(def, profile.lighting.hue, profile.lighting.sat, false)?;
-        proto.set_rgb_mode(def, profile.lighting.mode, true)?;
-    }
-
-    // Apply per-key RGB colors if supported by definition and present in profile
-    if def
-        .capabilities
-        .lighting
-        .as_ref()
-        .and_then(|l| l.per_key_rgb.as_ref())
-        .is_some()
-        && !profile.per_key_rgb.is_empty()
-    {
-        let active = active_led_coordinates(def);
-        let mut updates = Vec::with_capacity(active.len());
-        for (r, c) in active {
-            if let Some(cell) = profile
-                .per_key_rgb
-                .iter()
-                .find(|cell| cell.row == r && cell.col == c)
-            {
-                updates.push((r, c, cell.h, cell.s));
-            }
+    let mut channels = HashSet::new();
+    for ctrl in &def.via_lighting {
+        if let Some(value) = profile.via_lighting_values.get(&ctrl.id) {
+            proto.set_via_lighting(ctrl, value, false)?;
+            channels.insert(ctrl.channel);
         }
-        proto.set_key_colors_batch(def, &updates, false, true)?;
+    }
+    for channel in channels {
+        let response = proto.hid_command(0x09, &[channel])?;
+        if response[0] != 0x09 {
+            anyhow::bail!("Firmware rejected lighting save");
+        }
     }
 
     if !profile.macros.is_empty() {
         let _ = proto.write_macros(&profile.macros);
-    }
-
-    // Apply declarative custom controls (with backwards compatibility for `nkro_enabled` and `lighting.sleep_timeout`)
-    for ctrl in &def.capabilities.custom_controls {
-        let val = if let Some(&v) = profile.custom_control_values.get(&ctrl.id) {
-            v
-        } else if ctrl.id == "nkro" {
-            u8::from(profile.nkro_enabled)
-        } else if ctrl.id == "sleep_timeout" {
-            profile.lighting.sleep_timeout
-        } else {
-            ctrl.default_value
-        };
-        let _ = proto.set_custom_control(ctrl, val);
     }
 
     Ok(())
@@ -482,19 +444,7 @@ pub fn default_offline_profile(def: &KeyboardDefinition) -> KeyboardProfile {
     }
 
     let layer_trns = vec![1u16; cells]; // KC_TRNS
-    let layers = vec![
-        layer0,
-        layer_trns.clone(),
-        layer_trns.clone(),
-        layer_trns,
-    ];
-
-    let mut per_key_rgb = Vec::with_capacity(cells);
-    for r in 0..rows {
-        for c in 0..cols {
-            per_key_rgb.push(PerKeyRgbCell::from_hs(r, c, 120, 255));
-        }
-    }
+    let layers = vec![layer0, layer_trns.clone(), layer_trns.clone(), layer_trns];
 
     let macros = (0..16)
         .map(|i| MacroSlot {
@@ -503,29 +453,6 @@ pub fn default_offline_profile(def: &KeyboardDefinition) -> KeyboardProfile {
             steps: Vec::new(),
         })
         .collect();
-
-    let mut custom_control_values = HashMap::new();
-    for ctrl in &def.capabilities.custom_controls {
-        custom_control_values.insert(ctrl.id.clone(), ctrl.default_value);
-    }
-    let nkro_enabled = custom_control_values
-        .get("nkro")
-        .map(|&v| v != 0)
-        .unwrap_or(true);
-    let sleep_timeout = custom_control_values
-        .get("sleep_timeout")
-        .copied()
-        .unwrap_or(5);
-
-    let mut lighting = LightingConfig::default();
-    lighting.sleep_timeout = sleep_timeout;
-    if let Some(ref l_spec) = def.capabilities.lighting {
-        lighting.brightness = l_spec.brightness_max;
-        lighting.speed = ((l_spec.speed_min as u16 + l_spec.speed_max as u16) / 2) as u8;
-        if let Some(first_eff) = l_spec.effects.iter().find(|e| e.id == 12).or_else(|| l_spec.effects.first()) {
-            lighting.mode = first_eff.id;
-        }
-    }
 
     KeyboardProfile {
         schema_version: 2,
@@ -540,11 +467,8 @@ pub fn default_offline_profile(def: &KeyboardDefinition) -> KeyboardProfile {
         cols,
         layout_options: 0,
         layers,
-        lighting,
-        per_key_rgb,
         macros,
-        nkro_enabled,
-        custom_control_values,
+        via_lighting_values: HashMap::new(),
     }
 }
 

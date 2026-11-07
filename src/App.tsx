@@ -11,6 +11,7 @@ import { SettingsView } from "./components/views/SettingsView";
 import { useKeyboardStore } from "./store/useKeyboardStore";
 import { encodeKeycodeString } from "./data/keycodes";
 import { X } from "lucide-react";
+import { getTesterEventLabel } from "./utils/keyTester";
 
 const DOM_CODE_TO_QMK: Record<string, string> = {
   Escape: "KC_ESC",
@@ -189,12 +190,14 @@ export const App: React.FC = () => {
     cols: number;
     layoutKeys: typeof activeLayoutKeys;
     domMap: typeof domCodeMap;
+    customKeycodes: typeof activeDefinition.customKeycodes;
   }>({
     matrix: profile.layers[currentLayer] || [],
     protocolVersion: profile.protocol_version,
     cols: matrixCols,
     layoutKeys: activeLayoutKeys,
     domMap: domCodeMap,
+    customKeycodes: activeDefinition.customKeycodes,
   });
   useEffect(() => {
     activeLayerKeymapRef.current = {
@@ -203,6 +206,7 @@ export const App: React.FC = () => {
       cols: matrixCols,
       layoutKeys: activeLayoutKeys,
       domMap: domCodeMap,
+      customKeycodes: activeDefinition.customKeycodes,
     };
   }, [
     profile.layers,
@@ -211,6 +215,7 @@ export const App: React.FC = () => {
     matrixCols,
     activeLayoutKeys,
     domCodeMap,
+    activeDefinition.customKeycodes,
   ]);
 
   useEffect(() => {
@@ -330,13 +335,10 @@ export const App: React.FC = () => {
           if (prev.has(cellId)) return prev;
           return new Set(prev).add(cellId);
         });
-        const keyDef = activeLayerKeymapRef.current.layoutKeys.find(
-          (k) => k.row === coord.row && k.col === coord.col
-        );
         setRecentEvents((prev) => [
           {
             id: Date.now() + Math.random(),
-            label: keyDef?.value || e.code,
+            label: getTesterEventLabel(activeLayerKeymapRef.current, coord.row, coord.col),
             coord: cellId,
             time: new Date().toLocaleTimeString(),
           },
@@ -394,7 +396,7 @@ export const App: React.FC = () => {
     let interval: ReturnType<typeof setInterval> | null = null;
 
     const enableHwPoll =
-      (activeTab === "tester" || activeTab === "lighting") && hardwarePolling;
+      (activeTab === "keymap" || activeTab === "tester" || activeTab === "lighting") && hardwarePolling;
 
     if (!enableHwPoll) {
       hwPressedRef.current = new Set();
@@ -439,10 +441,9 @@ export const App: React.FC = () => {
               const newEntries = newlyPressed.map((cellId) => {
                 lastLoggedKeyTimeRef.current.set(cellId, now);
                 const [r, c] = cellId.split(",").map(Number);
-                const keyDef = curKeys.find((k) => k.row === r && k.col === c);
                 return {
                   id: Date.now() + Math.random(),
-                  label: keyDef?.value || cellId,
+                  label: getTesterEventLabel(activeLayerKeymapRef.current, r, c),
                   coord: cellId,
                   time: new Date().toLocaleTimeString(),
                 };

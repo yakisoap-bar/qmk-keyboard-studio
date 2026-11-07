@@ -1,7 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  ShieldCheck,
-  Clock,
   FolderOpen,
   Download,
   Plus,
@@ -21,7 +19,6 @@ export const SettingsView: React.FC = () => {
     profile,
     savedProfiles,
     activeProfileIndex,
-    setCustomControlValue,
     selectDeviceOrDefinition,
     importViaDefinition,
     removeDefinition,
@@ -108,17 +105,6 @@ export const SettingsView: React.FC = () => {
   const pidHex = (diagnostics.product_id || activeDefinition.productId)
     .toString(16)
     .padStart(4, "0");
-  const customControls = activeDefinition.capabilities.customControls || [];
-
-  const resolveControlValue = (ctrlId: string, defaultValue: number): number => {
-    if (profile.custom_control_values?.[ctrlId] !== undefined) {
-      return profile.custom_control_values[ctrlId];
-    }
-    if (ctrlId === "nkro") return profile.nkro_enabled ? 1 : 0;
-    if (ctrlId === "sleep_timeout") return profile.lighting.sleep_timeout;
-    return defaultValue;
-  };
-
   return (
     <div className="flex-1 grid grid-cols-12 gap-4 px-6 pb-5 min-h-0 overflow-y-auto">
       {/* Left Column: Hardware Controls & Keyboard Definitions Manager */}
@@ -147,81 +133,6 @@ export const SettingsView: React.FC = () => {
               </code>
             </p>
           </div>
-
-          {/* Declarative Custom Hardware Controls */}
-          {customControls.length > 0 ? (
-            <div className="space-y-2.5">
-              {customControls.map((ctrl) => {
-                const currentVal = resolveControlValue(
-                  ctrl.id,
-                  ctrl.defaultValue
-                );
-                return (
-                  <div
-                    key={ctrl.id}
-                    className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 flex items-center justify-between gap-3"
-                  >
-                    <div className="space-y-0.5">
-                      <div className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
-                        {ctrl.kind === "select" ? (
-                          <Clock className="w-4 h-4 text-emerald-400 shrink-0" />
-                        ) : (
-                          <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                        )}
-                        {ctrl.title}
-                      </div>
-                      {ctrl.description && (
-                        <div className="text-[11px] text-slate-400">
-                          {ctrl.description}
-                        </div>
-                      )}
-                    </div>
-
-                    {ctrl.kind === "select" && ctrl.options ? (
-                      <select
-                        value={currentVal}
-                        onChange={(e) =>
-                          void setCustomControlValue(
-                            ctrl.id,
-                            Number(e.target.value)
-                          )
-                        }
-                        className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-100 cursor-pointer shrink-0"
-                      >
-                        {ctrl.options.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        type="checkbox"
-                        checked={currentVal !== 0}
-                        onChange={(e) =>
-                          void setCustomControlValue(
-                            ctrl.id,
-                            e.target.checked ? 1 : 0
-                          )
-                        }
-                        className="w-4 h-4 accent-emerald-500 rounded cursor-pointer shrink-0"
-                      />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3.5 text-xs text-slate-400">
-              Standard QMK/VIA device active ({activeDefinition.name}). Custom
-              vendor hardware controls can be declared in the keyboard
-              definition JSON under{" "}
-              <code className="font-mono text-emerald-400">
-                capabilities.customControls
-              </code>
-              .
-            </div>
-          )}
 
           {/* Keyboard Definitions Registry */}
           <div className="pt-2 border-t border-slate-800 space-y-2.5">
@@ -403,7 +314,7 @@ export const SettingsView: React.FC = () => {
                   >
                     {p.name}{" "}
                     <span className="text-[10px] font-mono text-slate-400 ml-2">
-                      (RGB Mode #{p.lighting.mode})
+                      {`VIA lighting: ${Object.keys(p.via_lighting_values ?? {}).length} settings`}
                     </span>
                   </button>
                   {savedProfiles.length > 1 && (
@@ -465,7 +376,7 @@ export const SettingsView: React.FC = () => {
           This will send command{" "}
           <code className="font-mono text-rose-300">0x0A (EEPROM_RESET)</code>{" "}
           to your {diagnostics.product_name}, erasing custom keybinds and
-          per-key lighting on the keyboard.
+          lighting on the keyboard.
         </p>
         <div className="flex justify-end gap-2 mt-4">
           <button

@@ -1,57 +1,52 @@
 # QMK Keyboard Studio
 
-Standalone cross-platform (**Linux & Windows**) desktop application and CLI made using Google Gemini 4 Argon for customizing **QMK / VIA** mechanical keyboards over Raw HID (`Usage Page 0xFF60`, `Usage 0x0061`), with a complete declarative definition for the **Weikav / LEKU MAX102** (`USB VID 0x342D`, `PID 0xE537`), a **Generic Full-Size 104-Key QMK Fallback**, and support for importing any **VIA v2/v3 JSON** definition.
+Cross-platform Linux and Windows desktop app and CLI for QMK/VIA keyboards over Raw HID (`0xFF60:0x0061`). The app bundles the original **MAX102 VIA JSON** (`342D:E537`) and accepts **VIA v2/v3 keyboard definitions** for other keyboards.
 
-See [**`docs/KEYBOARD_SCHEMA_GUIDE.md`**](docs/KEYBOARD_SCHEMA_GUIDE.md) for full documentation on authoring keyboard definitions and declarative custom capabilities (per-key RGB templates, multi-LED switch zones, custom hardware controls, and custom keycodes).
+See [the VIA definition guide](docs/KEYBOARD_SCHEMA_GUIDE.md) for supported layouts, lighting menus, and import behavior.
 
 ## Features
 
-- **Modular Multi-Keyboard QMK / VIA Engine**:
-  - Auto-discovers all USB HID devices exposing `0xFF60:0x0061`.
-  - Import any standard **VIA v2/v3 JSON** definition (including KLE 2D arrays and physical layout options like Split Backspace, ISO Enter, or Split Spacebar) or use the **Generic Full-Size 104-Key QMK Fallback**.
-  - Profiles are automatically scoped per keyboard (`VID:PID` / definition ID).
-- **Keymap & Layer Studio**: Customize all layers with instant search, drag-and-drop key assignment, physical key capture (`Press Key to Bind`), **Mod+Key shortcut builder**, **Mod-Tap (`MT`) / Layer-Tap (`LT`) builder**, **board-specific custom keys** (`customKeycodes`), VIA **layout options**, and raw 16-bit QMK hex codes.
-- **Backlighting Studio**:
-  - Real-time 30fps interactive simulation of built-in QMK RGB Matrix effects (including live keystroke reactive effects like *Solid Reactive Simple*, *Solid Reactive Cross*, and *Splash*).
-  - Declarative **Custom Per-Key RGB Studio** with marquee drag selection, quick-selection groups, multi-LED switch zone splitting (e.g. 5-LED Spacebar on MAX102), and two-color gradient fills.
-- **Hardware-Synced Macro Editor (`M0–M15`)**: Record live keystrokes + delays, edit steps, and read/write the QMK macro buffer without zero-delay corruption.
-- **Live Switch Matrix Tester**: Combines OS key events and raw hardware matrix polling (`0x02 / 0x03`) with automatic layout coordinate mapping.
-- **Declarative Custom Hardware Controls & Dynamic Linux `udev` Helper**: Renders board-defined controls (such as NKRO and Wireless Sleep Timeout) and generates `udev` rules for any connected QMK keyboard.
+- Discovers connected QMK/VIA USB keyboards and matches their USB IDs to a VIA definition. Unknown keyboards require a matching VIA JSON; the app does not assume a generic layout.
+- Keymap editor with drag-and-drop assignment, physical-key capture, modifier shortcuts, Mod-Tap, Layer-Tap, VIA custom keycodes, and physical layout options.
+- Lighting studio generated from VIA lighting declarations, with standard QMK effect previews, brightness, speed, color, and independently selectable lighting groups.
+- Live lighting color bars in Keymap and Key Tester, retaining selection and switch-test indicators.
+- Macro editor with recording, delays, and hardware macro-buffer synchronization.
+- Keyboard tester with OS events and raw hardware matrix polling. Event labels use the selected layer's mapped keycodes.
+- Per-keyboard profiles, import/export, undo/redo, and a Linux `udev` helper.
 
-## Quick Start
+Keyboard definitions use the standard VIA `layouts.keymap` format. The former Studio JSON format, custom command templates, bespoke per-key painting, and vendor-specific hardware-control definitions are no longer supported. Profile files remain separate from keyboard definitions.
 
-### 1. Linux `udev` Rule (Non-Root HID Access)
-Click **Fix Permissions (pkexec)** inside the app banner, or copy the rule for your keyboard:
+## Development
+
+```bash
+npm install
+npm run dev
+npm run tauri dev
+npm test
+npm run build
+cargo test --manifest-path src-tauri/Cargo.toml
+```
+
+Build native release bundles with `npm run tauri build`.
+
+## Linux USB access
+
+Use **Fix Permissions (pkexec)** in the app, or install the bundled MAX102 rule:
+
 ```bash
 sudo cp udev/99-weikav-max102.rules /etc/udev/rules.d/69-weikav-max102.rules
 sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
 
-### 2. Development & Desktop App Build
-```bash
-# Run in development mode
-npm run tauri dev
+## CLI
 
-# Build native release bundles (.deb / .AppImage on Linux, .msi / .exe on Windows)
-npm run tauri build
-```
-
-### 3. Headless CLI Usage
 ```bash
-# List all connected QMK/VIA devices and installed definitions
 ./src-tauri/target/release/max102-tool list-devices
-
-# Print live device & lighting status (optionally targeting --device <vid:pid>)
 ./src-tauri/target/release/max102-tool status
-
-# Import a VIA JSON definition into the shared definition registry
 ./src-tauri/target/release/max102-tool import-def my-keyboard-via.json
-
-# Export or apply a JSON profile
 ./src-tauri/target/release/max102-tool profile export my-profile.json
 ./src-tauri/target/release/max102-tool profile apply my-profile.json
-
-# Change RGB mode, brightness, speed, or per-key color from scripts
-./src-tauri/target/release/max102-tool rgb --mode 12 --brightness 5 --speed 3
-./src-tauri/target/release/max102-tool rgb --mode custom --all-keys-color "#00ff88"
+./src-tauri/target/release/max102-tool rgb --mode 13 --brightness 5 --speed 3
 ```
+
+Use `--device <vid:pid>` and `--definition <definition-id>` to select a keyboard explicitly. RGB mode IDs must be declared in its VIA lighting menu. The CLI's RGB options target standard QMK lighting controls; custom menu parameters are available in the app.

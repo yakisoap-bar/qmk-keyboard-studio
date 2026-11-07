@@ -181,7 +181,7 @@ export const TopBar: React.FC = () => {
                   <option
                     key={`usb-${d.vendorId}-${d.productId}`}
                     value={`usb:${d.vendorId}:${d.productId}:${
-                      d.matchedDefinitionId || "generic-qmk-104"
+                      d.matchedDefinitionId || ""
                     }`}
                     className="bg-slate-900 text-slate-100"
                   >
@@ -218,7 +218,7 @@ export const TopBar: React.FC = () => {
           <button
             type="button"
             onClick={() => viaInputRef.current?.click()}
-            title="Import VIA v2/v3 or QMK Studio Keyboard Definition (.json)"
+            title="Import VIA v2/v3 Keyboard Definition (.json)"
             className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-emerald-400 transition cursor-pointer shrink-0"
           >
             <FileUp className="w-3.5 h-3.5" />
@@ -265,7 +265,7 @@ export const TopBar: React.FC = () => {
       {/* Main Navigation Tabs */}
       <nav className="flex items-center gap-1 bg-slate-950/70 p-1 rounded-lg border border-slate-800 shrink-0">
         {TABS.map((t) => {
-          const hasLighting = Boolean(activeDefinition.capabilities.lighting);
+          const hasLighting = Boolean(activeDefinition.viaLighting?.length);
           if (t.id === "lighting" && !hasLighting) {
             return null;
           }

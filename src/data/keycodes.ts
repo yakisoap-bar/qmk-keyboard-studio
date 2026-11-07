@@ -14,7 +14,6 @@ export interface KeycodeEntry {
     | "layer"
     | "macro"
     | "custom"
-    | "max102"
     | "mouse";
 }
 
@@ -325,24 +324,6 @@ export const BASIC_KEYCODE_VALUES: Record<string, number> = {
   QK_CLEAR_EEPROM: 31747,
 };
 
-export const MAX102_CUSTOM_KEYCODES: { index: number; name: string; shortName: string; title: string }[] = [
-  { index: 0, name: "Left Option", shortName: "LOpt", title: "macOS Left Option" },
-  { index: 1, name: "Right Option", shortName: "ROpt", title: "macOS Right Option" },
-  { index: 2, name: "Left Cmd", shortName: "LCmd", title: "macOS Left Command" },
-  { index: 3, name: "Right Cmd", shortName: "RCmd", title: "macOS Right Command" },
-  { index: 4, name: "Mission Control", shortName: "MCtrl", title: "macOS Mission Control" },
-  { index: 5, name: "Launchpad", shortName: "LPad", title: "macOS Launchpad" },
-  { index: 6, name: "Task View", shortName: "Task", title: "Windows Task View (Win+Tab)" },
-  { index: 7, name: "File Explorer", shortName: "File", title: "Windows File Explorer (Win+E)" },
-  { index: 8, name: "Screenshot", shortName: "SShot", title: "macOS Screenshot" },
-  { index: 9, name: "Cortana", shortName: "Cortana", title: "Windows Cortana" },
-  { index: 10, name: "Siri", shortName: "Siri", title: "macOS Siri" },
-  { index: 11, name: "Bluetooth Host 1", shortName: "BT1", title: "Switch to Bluetooth Host 1" },
-  { index: 12, name: "Bluetooth Host 2", shortName: "BT2", title: "Switch to Bluetooth Host 2" },
-  { index: 13, name: "Bluetooth Host 3", shortName: "BT3", title: "Switch to Bluetooth Host 3" },
-  { index: 14, name: "Battery Level", shortName: "Batt", title: "Show Battery Level on RGB Matrix" },
-];
-
 export const KEYCODE_CATALOG: KeycodeEntry[] = [
   // Basic
   { code: "KC_NO", name: "None", shortName: "None", title: "No action (KC_NO)", category: "basic" },
@@ -537,14 +518,7 @@ export const KEYCODE_CATALOG: KeycodeEntry[] = [
     category: "macro",
   })),
 
-  // Board Custom Keycodes CUSTOM(0..14) (Default fallback when no customKeycodes list passed)
-  ...MAX102_CUSTOM_KEYCODES.map((c): KeycodeEntry => ({
-    code: `CUSTOM(${c.index})`,
-    name: c.name,
-    shortName: c.shortName,
-    title: `${c.title} (CUSTOM(${c.index}))`,
-    category: "custom",
-  })),
+
 ];
 
 export function buildKeycodeCatalog(
@@ -552,7 +526,7 @@ export function buildKeycodeCatalog(
   layersCount = 4
 ): KeycodeEntry[] {
   const baseEntries = KEYCODE_CATALOG.filter(
-    (e) => e.category !== "custom" && e.category !== "max102" && e.category !== "layer"
+    (e) => e.category !== "custom" && e.category !== "layer"
   );
   const layerNums = Array.from({ length: Math.max(1, layersCount) }, (_, i) => i);
   const layerEntries: KeycodeEntry[] = layerNums.flatMap((l): KeycodeEntry[] => [
@@ -746,10 +720,7 @@ export function decodeKeycode(
   // Board Custom Keycodes (QK_KB / USER00..USER15)
   if (keycode >= ranges.QK_KB && keycode <= ranges.QK_KB_MAX) {
     const idx = keycode - ranges.QK_KB;
-    const custom =
-      customKeycodes !== undefined
-        ? customKeycodes[idx]
-        : MAX102_CUSTOM_KEYCODES[idx];
+    const custom = customKeycodes?.[idx];
     if (custom) {
       return {
         shortLabel: custom.shortName || custom.name,

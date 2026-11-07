@@ -1,12 +1,10 @@
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 
-const WEIKAV_MAX102_JSON: &str = include_str!("../../../src/data/definitions/weikav_max102.json");
-const GENERIC_104_JSON: &str = include_str!("../../../src/data/definitions/generic_104.json");
+const MAX102_VIA_JSON: &str = include_str!("../../../src/data/definitions/max102.json");
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LayoutKey {
@@ -45,27 +43,6 @@ fn default_alpha() -> String {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MultiLedCell {
-    pub row: u8,
-    pub col: u8,
-    pub label: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MultiLedKeyZone {
-    pub id: String,
-    pub label: String,
-    #[serde(rename = "badgeText", default)]
-    pub badge_text: Option<String>,
-    #[serde(rename = "switchRow")]
-    pub switch_row: u8,
-    #[serde(rename = "switchCol")]
-    pub switch_col: u8,
-    #[serde(rename = "ledCells")]
-    pub led_cells: Vec<MultiLedCell>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MatrixDim {
     pub rows: u8,
     pub cols: u8,
@@ -82,168 +59,12 @@ pub struct CustomKeycodeDef {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LayoutsBlock {
-    #[serde(default = "default_board_width")]
     pub width: f64,
-    #[serde(default = "default_board_height")]
     pub height: f64,
     #[serde(default)]
     pub labels: Vec<Value>,
     #[serde(default)]
     pub keys: Vec<LayoutKey>,
-    #[serde(rename = "multiLedKeys", default)]
-    pub multi_led_keys: Vec<MultiLedKeyZone>,
-}
-
-fn default_board_width() -> f64 {
-    20.5
-}
-
-fn default_board_height() -> f64 {
-    6.25
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CommandTemplate {
-    pub cmd: Vec<Value>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ReadTemplate {
-    pub cmd: Vec<Value>,
-    #[serde(rename = "valueIndex")]
-    pub value_index: usize,
-    #[serde(rename = "fallbackCmd", default)]
-    pub fallback_cmd: Option<Vec<Value>>,
-    #[serde(rename = "fallbackValueIndex", default)]
-    pub fallback_value_index: Option<usize>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ColorReadTemplate {
-    pub cmd: Vec<Value>,
-    #[serde(rename = "hueIndex")]
-    pub hue_index: usize,
-    #[serde(rename = "satIndex")]
-    pub sat_index: usize,
-    #[serde(rename = "fallbackCmd", default)]
-    pub fallback_cmd: Option<Vec<Value>>,
-    #[serde(rename = "fallbackHueIndex", default)]
-    pub fallback_hue_index: Option<usize>,
-    #[serde(rename = "fallbackSatIndex", default)]
-    pub fallback_sat_index: Option<usize>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RgbEffectDef {
-    pub name: String,
-    pub id: u8,
-    #[serde(default = "default_simulation")]
-    pub simulation: String,
-    #[serde(default)]
-    pub reactive: bool,
-}
-
-fn default_simulation() -> String {
-    "cycle_all".to_string()
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PerKeyRgbSpec {
-    #[serde(rename = "modeId")]
-    pub mode_id: u8,
-    #[serde(rename = "interPacketDelayMs", default = "default_inter_packet_delay")]
-    pub inter_packet_delay_ms: u64,
-    pub get: ColorReadTemplate,
-    pub set: CommandTemplate,
-    #[serde(default)]
-    pub save: Option<CommandTemplate>,
-}
-
-fn default_inter_packet_delay() -> u64 {
-    4
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LightingCapabilitySpec {
-    #[serde(rename = "brightnessMax", default = "default_brightness_max")]
-    pub brightness_max: u8,
-    #[serde(rename = "brightnessStep", default = "default_brightness_step")]
-    pub brightness_step: u8,
-    #[serde(rename = "speedMin", default = "default_speed_min")]
-    pub speed_min: u8,
-    #[serde(rename = "speedMax", default = "default_speed_max")]
-    pub speed_max: u8,
-    #[serde(rename = "speedStep", default = "default_speed_step")]
-    pub speed_step: u8,
-    #[serde(rename = "getBrightness")]
-    pub get_brightness: ReadTemplate,
-    #[serde(rename = "setBrightness")]
-    pub set_brightness: CommandTemplate,
-    #[serde(rename = "getMode")]
-    pub get_mode: ReadTemplate,
-    #[serde(rename = "setMode")]
-    pub set_mode: CommandTemplate,
-    #[serde(rename = "getSpeed")]
-    pub get_speed: ReadTemplate,
-    #[serde(rename = "setSpeed")]
-    pub set_speed: CommandTemplate,
-    #[serde(rename = "getColor")]
-    pub get_color: ColorReadTemplate,
-    #[serde(rename = "setColor")]
-    pub set_color: CommandTemplate,
-    pub save: CommandTemplate,
-    #[serde(default)]
-    pub effects: Vec<RgbEffectDef>,
-    #[serde(rename = "perKeyRgb", default)]
-    pub per_key_rgb: Option<PerKeyRgbSpec>,
-}
-
-fn default_brightness_max() -> u8 {
-    180
-}
-fn default_brightness_step() -> u8 {
-    36
-}
-fn default_speed_min() -> u8 {
-    51
-}
-fn default_speed_max() -> u8 {
-    255
-}
-fn default_speed_step() -> u8 {
-    51
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CustomControlOption {
-    pub label: String,
-    pub value: u8,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CustomControlSpec {
-    pub id: String,
-    pub title: String,
-    #[serde(default)]
-    pub description: String,
-    pub kind: String,
-    #[serde(rename = "defaultValue", default)]
-    pub default_value: u8,
-    #[serde(default)]
-    pub options: Vec<CustomControlOption>,
-    #[serde(default)]
-    pub get: Option<ReadTemplate>,
-    pub set: CommandTemplate,
-    #[serde(default)]
-    pub save: Option<CommandTemplate>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct CapabilitiesBlock {
-    #[serde(default)]
-    pub lighting: Option<LightingCapabilitySpec>,
-    #[serde(rename = "customControls", default)]
-    pub custom_controls: Vec<CustomControlSpec>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -260,72 +81,224 @@ pub struct KeyboardDefinition {
     pub layouts: LayoutsBlock,
     #[serde(rename = "customKeycodes", default)]
     pub custom_keycodes: Vec<CustomKeycodeDef>,
+    pub source: Value,
+    #[serde(rename = "viaLighting", default)]
+    pub via_lighting: Vec<ViaLightingControl>,
+}
+
+/// Normalized byte-valued VIA lighting menu control.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ViaLightingControl {
+    pub id: String,
+    pub label: String,
+    pub group: String,
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub channel: u8,
+    pub value: u8,
     #[serde(default)]
-    pub capabilities: CapabilitiesBlock,
+    pub arguments: Vec<u8>,
+    #[serde(default)]
+    pub options: Vec<Value>,
+    #[serde(rename = "showIf", default, skip_serializing_if = "Option::is_none")]
+    pub show_if: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct TemplateVars {
-    pub row: u8,
-    pub col: u8,
-    pub val: u8,
-    pub hue: u8,
-    pub sat: u8,
-    pub hi: u8,
-    pub lo: u8,
-}
-
-pub fn eval_template_bytes(tokens: &[Value], vars: &TemplateVars) -> Result<(u8, Vec<u8>)> {
-    let mut bytes = Vec::with_capacity(tokens.len());
-    for token in tokens {
-        match token {
-            Value::Number(n) => {
-                let b = n.as_u64().unwrap_or(0).min(255) as u8;
-                bytes.push(b);
+impl ViaLightingControl {
+    pub fn byte_count(&self) -> usize {
+        if self.kind == "color" {
+            2
+        } else {
+            1
+        }
+    }
+    pub fn validate(&self, bytes: &[u8]) -> Result<()> {
+        if bytes.len() != self.byte_count() {
+            bail!("Incorrect lighting value length");
+        }
+        let v = bytes[0] as u64;
+        let valid = match self.kind.as_str() {
+            "color" => true,
+            "range" => {
+                let lo = self.options.first().and_then(Value::as_u64).unwrap_or(0);
+                let hi = self.options.get(1).and_then(Value::as_u64).unwrap_or(255);
+                v >= lo && v <= hi
             }
-            Value::String(s) => {
-                let trimmed = s.trim();
-                let b = match trimmed {
-                    "$row" => vars.row,
-                    "$col" => vars.col,
-                    "$val" => vars.val,
-                    "$hue" => vars.hue,
-                    "$sat" => vars.sat,
-                    "$hi" => vars.hi,
-                    "$lo" => vars.lo,
-                    _ if trimmed.starts_with("0x") || trimmed.starts_with("0X") => {
-                        u8::from_str_radix(&trimmed[2..], 16).unwrap_or(0)
+            "toggle" => {
+                let lo = self.options.first().and_then(Value::as_u64).unwrap_or(0);
+                let hi = self.options.get(1).and_then(Value::as_u64).unwrap_or(1);
+                v == lo || v == hi
+            }
+            "dropdown" => self.options.iter().enumerate().any(|(i, o)| {
+                if o.is_string() {
+                    v == i as u64
+                } else {
+                    o.get(1).and_then(Value::as_u64) == Some(v)
+                }
+            }),
+            _ => false,
+        };
+        if !valid {
+            bail!("Lighting value is outside the declared options");
+        }
+        Ok(())
+    }
+}
+
+fn parse_via_lighting(obj: &serde_json::Map<String, Value>) -> Vec<ViaLightingControl> {
+    let builtins: Value =
+        serde_json::from_str(include_str!("../../../src/data/viaLightingMenus.json")).unwrap();
+    let menus = if let Some(menus) = obj.get("menus").and_then(Value::as_array) {
+        menus.clone()
+    } else {
+        let lighting = obj.get("lighting").unwrap_or(&Value::Null);
+        let name = lighting
+            .as_str()
+            .or_else(|| lighting.get("extends").and_then(Value::as_str))
+            .unwrap_or("");
+        let mut menu = builtins.get(name).cloned().unwrap_or(Value::Null);
+        if let Some(effects) = lighting.get("underglowEffects").and_then(Value::as_array) {
+            if let Some(groups) = menu.get_mut("content").and_then(Value::as_array_mut) {
+                for group in groups {
+                    if let Some(controls) = group.get_mut("content").and_then(Value::as_array_mut) {
+                        for control in controls {
+                            if control["type"] == "dropdown" && control["content"][1] == 2 {
+                                control["options"] = Value::Array(
+                                    effects
+                                        .iter()
+                                        .map(|e| {
+                                            if e.is_array() {
+                                                e[0].clone()
+                                            } else {
+                                                e.clone()
+                                            }
+                                        })
+                                        .collect(),
+                                );
+                            }
+                        }
                     }
-                    _ => trimmed.parse::<u8>().unwrap_or(0),
-                };
-                bytes.push(b);
+                }
             }
-            _ => bytes.push(0),
+        }
+        vec![menu]
+    };
+    fn walk(node: &Value, group: &str, conditions: &[String], out: &mut Vec<ViaLightingControl>) {
+        let mut conditions = conditions.to_vec();
+        if let Some(c) = node.get("showIf").and_then(Value::as_str) {
+            conditions.push(c.to_owned());
+        }
+        if let Some(kind) = node.get("type").and_then(Value::as_str) {
+            if !["range", "dropdown", "toggle", "color"].contains(&kind) {
+                return;
+            }
+            let Some(content) = node.get("content").and_then(Value::as_array) else {
+                return;
+            };
+            if content.len() < 3 || content.len() > 29 {
+                return;
+            }
+            let Some(id) = content[0].as_str() else {
+                return;
+            };
+            let Some(bytes) = content[1..]
+                .iter()
+                .map(|v| v.as_u64().filter(|v| *v <= 255).map(|v| v as u8))
+                .collect::<Option<Vec<_>>>()
+            else {
+                return;
+            };
+            if out.iter().any(|c| c.id == id) {
+                return;
+            }
+            let options = node
+                .get("options")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            // Two-byte numeric controls are not supported by this lighting UI.
+            if kind != "color"
+                && options.iter().any(|v| {
+                    v.as_u64()
+                        .or_else(|| v.get(1).and_then(Value::as_u64))
+                        .map(|v| v > 255)
+                        .unwrap_or(false)
+                })
+            {
+                return;
+            }
+            out.push(ViaLightingControl {
+                id: id.into(),
+                label: node
+                    .get("label")
+                    .and_then(Value::as_str)
+                    .unwrap_or(id)
+                    .into(),
+                group: group.into(),
+                kind: kind.into(),
+                channel: bytes[0],
+                value: bytes[1],
+                arguments: bytes[2..].to_vec(),
+                options,
+                show_if: if conditions.is_empty() {
+                    None
+                } else {
+                    Some(
+                        conditions
+                            .iter()
+                            .map(|c| format!("({})", c))
+                            .collect::<Vec<_>>()
+                            .join(" && "),
+                    )
+                },
+            });
+        } else if let Some(children) = node.get("content").and_then(Value::as_array) {
+            let group = node.get("label").and_then(Value::as_str).unwrap_or(group);
+            for child in children {
+                walk(child, group, &conditions, out);
+            }
         }
     }
-
-    let Some((&cmd, args)) = bytes.split_first() else {
-        bail!("Command template cannot be empty");
-    };
-    Ok((cmd, args.to_vec()))
+    let mut result = Vec::new();
+    for entry in &menus {
+        let menu = entry
+            .as_str()
+            .and_then(|s| builtins.get(s))
+            .unwrap_or(entry);
+        let label = menu
+            .get("label")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_lowercase();
+        if label.contains("light") || label.contains("rgb") {
+            walk(menu, "Lighting", &[], &mut result);
+        }
+    }
+    result
 }
 
-pub fn parse_u16_hex_or_num(val: Option<&Value>, default: u16) -> u16 {
-    let Some(v) = val else {
-        return default;
+fn parse_unsigned(value: Option<&Value>, max: u64) -> Result<u64> {
+    let Some(value) = value else {
+        return Ok(0);
     };
-    match v {
-        Value::Number(n) => (n.as_u64().unwrap_or(default as u64) & 0xFFFF) as u16,
+    let number = match value {
+        Value::Number(n) => n
+            .as_u64()
+            .context("VIA USB IDs must be unsigned integers")?,
         Value::String(s) => {
-            let t = s.trim();
-            if let Some(hex) = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")) {
-                u16::from_str_radix(hex, 16).unwrap_or(default)
+            let s = s.trim();
+            if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
+                u64::from_str_radix(hex, 16).context("Invalid hexadecimal VIA USB ID")?
             } else {
-                t.parse::<u16>().unwrap_or(default)
+                s.parse::<u64>().context("Invalid VIA USB ID")?
             }
         }
-        _ => default,
+        _ => bail!("Invalid VIA USB ID"),
+    };
+    if number > max {
+        bail!("VIA USB ID is outside the allowed range");
     }
+    Ok(number)
 }
 
 pub fn slugify_id(name: &str, vid: u16, pid: u16) -> String {
@@ -492,109 +465,7 @@ pub fn parse_via_kle_keymap(keymap: &[Value]) -> Vec<LayoutKey> {
     keys
 }
 
-pub fn standard_via_lighting_spec(channel: u8) -> LightingCapabilitySpec {
-    let ch = Value::from(channel);
-    LightingCapabilitySpec {
-        brightness_max: 255,
-        brightness_step: 51,
-        speed_min: 0,
-        speed_max: 255,
-        speed_step: 51,
-        get_brightness: ReadTemplate {
-            cmd: vec![Value::from(8), ch.clone(), Value::from(1)],
-            value_index: 3,
-            fallback_cmd: Some(vec![Value::from(2), ch.clone(), Value::from(1)]),
-            fallback_value_index: Some(3),
-        },
-        set_brightness: CommandTemplate {
-            cmd: vec![
-                Value::from(7),
-                ch.clone(),
-                Value::from(1),
-                Value::from("$val"),
-            ],
-        },
-        get_mode: ReadTemplate {
-            cmd: vec![Value::from(2), ch.clone(), Value::from(2)],
-            value_index: 3,
-            fallback_cmd: Some(vec![Value::from(8), ch.clone(), Value::from(2)]),
-            fallback_value_index: Some(3),
-        },
-        set_mode: CommandTemplate {
-            cmd: vec![
-                Value::from(7),
-                ch.clone(),
-                Value::from(2),
-                Value::from("$val"),
-            ],
-        },
-        get_speed: ReadTemplate {
-            cmd: vec![Value::from(8), ch.clone(), Value::from(3)],
-            value_index: 3,
-            fallback_cmd: Some(vec![Value::from(2), ch.clone(), Value::from(3)]),
-            fallback_value_index: Some(3),
-        },
-        set_speed: CommandTemplate {
-            cmd: vec![
-                Value::from(7),
-                ch.clone(),
-                Value::from(3),
-                Value::from("$val"),
-            ],
-        },
-        get_color: ColorReadTemplate {
-            cmd: vec![Value::from(2), ch.clone(), Value::from(4)],
-            hue_index: 3,
-            sat_index: 4,
-            fallback_cmd: Some(vec![Value::from(8), ch.clone(), Value::from(4)]),
-            fallback_hue_index: Some(3),
-            fallback_sat_index: Some(4),
-        },
-        set_color: CommandTemplate {
-            cmd: vec![
-                Value::from(7),
-                ch.clone(),
-                Value::from(4),
-                Value::from("$hue"),
-                Value::from("$sat"),
-            ],
-        },
-        save: CommandTemplate {
-            cmd: vec![Value::from(9), ch],
-        },
-        effects: vec![
-            RgbEffectDef { name: "Solid Color".into(), id: 1, simulation: "solid".into(), reactive: false },
-            RgbEffectDef { name: "Alphas Mods".into(), id: 2, simulation: "alphas_mods".into(), reactive: false },
-            RgbEffectDef { name: "Gradient Left Right".into(), id: 4, simulation: "gradient_left_right".into(), reactive: false },
-            RgbEffectDef { name: "Breathing".into(), id: 5, simulation: "breathing".into(), reactive: false },
-            RgbEffectDef { name: "Band Sat".into(), id: 6, simulation: "band_sat".into(), reactive: false },
-            RgbEffectDef { name: "Band Val".into(), id: 7, simulation: "band_val".into(), reactive: false },
-            RgbEffectDef { name: "Band Pinwheel Val".into(), id: 9, simulation: "band_pinwheel_val".into(), reactive: false },
-            RgbEffectDef { name: "Band Spiral Val".into(), id: 11, simulation: "band_spiral_val".into(), reactive: false },
-            RgbEffectDef { name: "Cycle All".into(), id: 12, simulation: "cycle_all".into(), reactive: false },
-            RgbEffectDef { name: "Cycle Left Right".into(), id: 13, simulation: "cycle_left_right".into(), reactive: false },
-            RgbEffectDef { name: "Cycle Up Down".into(), id: 14, simulation: "cycle_up_down".into(), reactive: false },
-            RgbEffectDef { name: "Rainbow Moving Chevron".into(), id: 15, simulation: "rainbow_chevron".into(), reactive: false },
-            RgbEffectDef { name: "Cycle Out In".into(), id: 16, simulation: "cycle_out_in".into(), reactive: false },
-            RgbEffectDef { name: "Cycle Out In Dual".into(), id: 17, simulation: "cycle_out_in_dual".into(), reactive: false },
-            RgbEffectDef { name: "Cycle Pinwheel".into(), id: 18, simulation: "cycle_pinwheel".into(), reactive: false },
-            RgbEffectDef { name: "Cycle Spiral".into(), id: 19, simulation: "cycle_spiral".into(), reactive: false },
-            RgbEffectDef { name: "Dual Beacon".into(), id: 20, simulation: "dual_beacon".into(), reactive: false },
-            RgbEffectDef { name: "Rainbow Beacon".into(), id: 21, simulation: "rainbow_beacon".into(), reactive: false },
-            RgbEffectDef { name: "Rainbow Pinwheels".into(), id: 22, simulation: "rainbow_pinwheels".into(), reactive: false },
-            RgbEffectDef { name: "Raindrops".into(), id: 23, simulation: "raindrops".into(), reactive: false },
-            RgbEffectDef { name: "Jellybean Raindrops".into(), id: 24, simulation: "jellybean_raindrops".into(), reactive: false },
-            RgbEffectDef { name: "Pixel Flow".into(), id: 29, simulation: "pixel_flow".into(), reactive: false },
-            RgbEffectDef { name: "Digital Rain".into(), id: 32, simulation: "digital_rain".into(), reactive: false },
-            RgbEffectDef { name: "Solid Reactive Simple".into(), id: 33, simulation: "reactive_simple".into(), reactive: true },
-            RgbEffectDef { name: "Solid Reactive Cross".into(), id: 37, simulation: "reactive_cross".into(), reactive: true },
-            RgbEffectDef { name: "Splash".into(), id: 41, simulation: "splash".into(), reactive: true },
-        ],
-        per_key_rgb: None,
-    }
-}
-
-pub fn parse_via_or_normalized_json(raw_json: &str, builtin: bool) -> Result<KeyboardDefinition> {
+pub fn parse_via_definition(raw_json: &str, builtin: bool) -> Result<KeyboardDefinition> {
     let val: Value =
         serde_json::from_str(raw_json).context("Invalid JSON in keyboard definition")?;
     let Some(obj) = val.as_object() else {
@@ -603,39 +474,38 @@ pub fn parse_via_or_normalized_json(raw_json: &str, builtin: bool) -> Result<Key
 
     let name = obj
         .get("name")
-        .and_then(|v| v.as_str())
-        .map(|s| s.trim())
+        .and_then(Value::as_str)
+        .map(str::trim)
         .filter(|s| !s.is_empty())
-        .unwrap_or("QMK Keyboard")
-        .to_string();
-
-    let mut vendor_id = parse_u16_hex_or_num(obj.get("vendorId"), 0);
-    let mut product_id = parse_u16_hex_or_num(obj.get("productId"), 0);
-    if vendor_id == 0 && product_id == 0 {
-        if let Some(vpid) = obj.get("vendorProductId").and_then(|v| v.as_u64()) {
-            vendor_id = ((vpid >> 16) & 0xFFFF) as u16;
-            product_id = (vpid & 0xFFFF) as u16;
-        }
+        .context("VIA definition requires a name")?
+        .to_owned();
+    if obj.contains_key("capabilities") || obj.contains_key("viaLighting") {
+        bail!("Only VIA JSON keyboard definitions are supported");
     }
 
-    let id = obj
-        .get("id")
-        .and_then(|v| v.as_str())
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| slugify_id(&name, vendor_id, product_id));
+    let mut vendor_id = parse_unsigned(obj.get("vendorId"), 65535)? as u16;
+    let mut product_id = parse_unsigned(obj.get("productId"), 65535)? as u16;
+    if vendor_id == 0 && product_id == 0 && obj.contains_key("vendorProductId") {
+        let packed = parse_unsigned(obj.get("vendorProductId"), u32::MAX as u64)?;
+        vendor_id = (packed >> 16) as u16;
+        product_id = (packed & 0xffff) as u16;
+    }
 
-    let matrix_obj = obj.get("matrix").and_then(|v| v.as_object());
-    let rows = matrix_obj
-        .and_then(|m| m.get("rows"))
-        .and_then(|v| v.as_u64())
-        .unwrap_or(6)
-        .max(1) as u8;
-    let cols = matrix_obj
-        .and_then(|m| m.get("cols"))
-        .and_then(|v| v.as_u64())
-        .unwrap_or(21)
-        .max(1) as u8;
+    let id = slugify_id(&name, vendor_id, product_id);
+    let matrix_obj = obj
+        .get("matrix")
+        .and_then(Value::as_object)
+        .context("VIA definition requires a matrix")?;
+    let dimension = |key: &str| -> Result<u8> {
+        let value = matrix_obj
+            .get(key)
+            .and_then(Value::as_u64)
+            .filter(|v| *v > 0 && *v <= 255)
+            .with_context(|| format!("VIA matrix {} must be an integer from 1 to 255", key))?;
+        Ok(value as u8)
+    };
+    let rows = dimension("rows")?;
+    let cols = dimension("cols")?;
 
     let layouts_obj = obj
         .get("layouts")
@@ -648,14 +518,17 @@ pub fn parse_via_or_normalized_json(raw_json: &str, builtin: bool) -> Result<Key
         .cloned()
         .unwrap_or_default();
 
-    let keys: Vec<LayoutKey> = if let Some(keys_val) = layouts_obj.get("keys") {
-        serde_json::from_value(keys_val.clone())
-            .context("Failed parsing layouts.keys array")?
-    } else if let Some(keymap_arr) = layouts_obj.get("keymap").and_then(|v| v.as_array()) {
-        parse_via_kle_keymap(keymap_arr)
-    } else {
-        bail!("Keyboard definition 'layouts' must contain either 'keys' or 'keymap'");
-    };
+    if layouts_obj.contains_key("keys") || layouts_obj.contains_key("multiLedKeys") {
+        bail!("Only VIA layouts.keymap is supported");
+    }
+    let keymap = layouts_obj
+        .get("keymap")
+        .and_then(Value::as_array)
+        .context("VIA definition requires layouts.keymap")?;
+    let keys = parse_via_kle_keymap(keymap);
+    if keys.is_empty() || keys.iter().any(|k| k.row >= rows || k.col >= cols) {
+        bail!("VIA layout must contain valid coordinates within the matrix");
+    }
 
     let mut min_x = f64::INFINITY;
     let mut min_y = f64::INFINITY;
@@ -685,47 +558,15 @@ pub fn parse_via_or_normalized_json(raw_json: &str, builtin: bool) -> Result<Key
         min_y = 0.0;
     }
 
-    let width = layouts_obj
-        .get("width")
-        .and_then(|v| v.as_f64())
-        .filter(|&w| w > 0.0)
-        .unwrap_or_else(|| (max_x - min_x).max(1.0));
-    let height = layouts_obj
-        .get("height")
-        .and_then(|v| v.as_f64())
-        .filter(|&h| h > 0.0)
-        .unwrap_or_else(|| (max_y - min_y).max(1.0));
-
-    let multi_led_keys: Vec<MultiLedKeyZone> = layouts_obj
-        .get("multiLedKeys")
-        .map(|v| serde_json::from_value(v.clone()).unwrap_or_default())
-        .unwrap_or_default();
+    let width = (max_x - min_x).max(1.0);
+    let height = (max_y - min_y).max(1.0);
 
     let custom_keycodes: Vec<CustomKeycodeDef> = obj
         .get("customKeycodes")
         .map(|v| serde_json::from_value(v.clone()).unwrap_or_default())
         .unwrap_or_default();
 
-    let mut capabilities: CapabilitiesBlock = obj
-        .get("capabilities")
-        .map(|v| serde_json::from_value(v.clone()).unwrap_or_default())
-        .unwrap_or_default();
-
-    if capabilities.lighting.is_none() {
-        if let Some(lighting_val) = obj.get("lighting") {
-            let is_none = lighting_val
-                .as_str()
-                .map(|s| s.eq_ignore_ascii_case("none") || s.eq_ignore_ascii_case("false"))
-                .unwrap_or(false);
-            if !is_none && !lighting_val.is_null() {
-                let channel = lighting_val
-                    .as_str()
-                    .map(|s| if s.to_ascii_lowercase().contains("rgblight") { 2u8 } else { 3u8 })
-                    .unwrap_or(3u8);
-                capabilities.lighting = Some(standard_via_lighting_spec(channel));
-            }
-        }
-    }
+    let via_lighting = parse_via_lighting(obj);
 
     Ok(KeyboardDefinition {
         id,
@@ -739,10 +580,10 @@ pub fn parse_via_or_normalized_json(raw_json: &str, builtin: bool) -> Result<Key
             height,
             labels,
             keys,
-            multi_led_keys,
         },
         custom_keycodes,
-        capabilities,
+        source: val.clone(),
+        via_lighting,
     })
 }
 
@@ -755,12 +596,7 @@ pub fn definitions_dir() -> PathBuf {
 
 pub fn load_all_definitions() -> Vec<KeyboardDefinition> {
     let mut list = Vec::new();
-    if let Ok(weikav) = parse_via_or_normalized_json(WEIKAV_MAX102_JSON, true) {
-        list.push(weikav);
-    }
-    if let Ok(generic) = parse_via_or_normalized_json(GENERIC_104_JSON, true) {
-        list.push(generic);
-    }
+    list.push(default_definition());
 
     let dir = definitions_dir();
     if let Ok(entries) = fs::read_dir(dir) {
@@ -768,8 +604,11 @@ pub fn load_all_definitions() -> Vec<KeyboardDefinition> {
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) == Some("json") {
                 if let Ok(content) = fs::read_to_string(&path) {
-                    if let Ok(def) = parse_via_or_normalized_json(&content, false) {
-                        if !list.iter().any(|existing| existing.id == def.id) {
+                    if let Ok(def) = parse_via_definition(&content, false) {
+                        if let Some(index) = list.iter().position(|existing| existing.id == def.id)
+                        {
+                            list[index] = def;
+                        } else {
                             list.push(def);
                         }
                     }
@@ -782,13 +621,7 @@ pub fn load_all_definitions() -> Vec<KeyboardDefinition> {
 }
 
 pub fn default_definition() -> KeyboardDefinition {
-    parse_via_or_normalized_json(WEIKAV_MAX102_JSON, true)
-        .expect("Bundled weikav_max102.json must be valid")
-}
-
-pub fn generic_fallback_definition() -> KeyboardDefinition {
-    parse_via_or_normalized_json(GENERIC_104_JSON, true)
-        .expect("Bundled generic_104.json must be valid")
+    parse_via_definition(MAX102_VIA_JSON, true).expect("Bundled MAX102 VIA JSON must be valid")
 }
 
 pub fn find_definition_by_id(def_id: &str) -> Option<KeyboardDefinition> {
@@ -805,11 +638,11 @@ pub fn find_definition_by_vid_pid(vid: u16, pid: u16) -> Option<KeyboardDefiniti
 }
 
 pub fn save_user_definition(raw_json: &str) -> Result<KeyboardDefinition> {
-    let def = parse_via_or_normalized_json(raw_json, false)?;
+    let def = parse_via_definition(raw_json, false)?;
     let dir = definitions_dir();
     fs::create_dir_all(&dir).context("Failed to create definitions directory")?;
     let file_path = dir.join(format!("{}.json", def.id));
-    let serialized = serde_json::to_string_pretty(&def)?;
+    let serialized = serde_json::to_string_pretty(&def.source)?;
     fs::write(&file_path, serialized)
         .with_context(|| format!("Failed to write definition to {}", file_path.display()))?;
     Ok(def)
@@ -825,113 +658,103 @@ pub fn remove_user_definition(def_id: &str) -> Result<()> {
     Ok(())
 }
 
-/// Computes all active LED `(row, col)` coordinates for a definition, expanding any multi-LED switch zones.
-pub fn active_led_coordinates(def: &KeyboardDefinition) -> Vec<(u8, u8)> {
-    let mut set: HashSet<(u8, u8)> = HashSet::new();
-    let mut coords = Vec::new();
-
-    for k in &def.layouts.keys {
-        if k.d {
-            continue;
-        }
-        if let Some(zone) = def
-            .layouts
-            .multi_led_keys
-            .iter()
-            .find(|z| z.switch_row == k.row && z.switch_col == k.col)
-        {
-            for cell in &zone.led_cells {
-                if set.insert((cell.row, cell.col)) {
-                    coords.push((cell.row, cell.col));
-                }
-            }
-        } else if set.insert((k.row, k.col)) {
-            coords.push((k.row, k.col));
-        }
-    }
-
-    coords.sort_by_key(|&(r, c)| (r, c));
-    coords
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
-    #[test]
-    fn test_bundled_definitions_parse() {
-        let weikav = default_definition();
-        assert_eq!(weikav.id, "weikav-max102");
-        assert_eq!(weikav.vendor_id, 0x342D);
-        assert_eq!(weikav.product_id, 0xE537);
-        assert_eq!(weikav.matrix.rows, 6);
-        assert_eq!(weikav.matrix.cols, 19);
-        assert_eq!(weikav.layouts.keys.len(), 101);
-        assert_eq!(weikav.layouts.multi_led_keys.len(), 1);
-        assert_eq!(active_led_coordinates(&weikav).len(), 105);
-
-        let generic = generic_fallback_definition();
-        assert_eq!(generic.id, "generic-qmk-104");
-        assert_eq!(generic.matrix.rows, 6);
-        assert_eq!(generic.matrix.cols, 21);
-        assert!(generic.capabilities.lighting.is_some());
+    fn sample() -> Value {
+        json!({"name":"Test VIA", "vendorId":"0xFEED", "productId":"0x6060",
+            "matrix":{"rows":1,"cols":2}, "layouts":{"keymap":[["0,0","0,1"]]},
+            "menus":["qmk_rgb_matrix"]})
     }
 
     #[test]
-    fn test_standard_via_kle_json_parses() {
-        let via_json = r##"{
-            "name": "Test 60% Board",
-            "vendorId": "0xFEED",
-            "productId": "0x6060",
-            "lighting": "qmk_rgb_matrix",
-            "matrix": { "rows": 5, "cols": 14 },
-            "layouts": {
-                "labels": ["Split Backspace"],
-                "keymap": [
-                    [
-                        {"c": "#777777"},
-                        "0,0\n\n\n\n\n\n\n\n\nEsc",
-                        {"c": "#cccccc"},
-                        "0,1\n\n\n\n\n\n\n\n\n1!",
-                        {"w": 2},
-                        "0,13\n\n\n0,0\n\n\n\n\n\nBksp"
-                    ]
-                ]
-            }
-        }"##;
-        let def = parse_via_or_normalized_json(via_json, false).unwrap();
-        assert_eq!(def.vendor_id, 0xFEED);
-        assert_eq!(def.product_id, 0x6060);
-        assert_eq!(def.layouts.keys.len(), 3);
-        assert_eq!(def.layouts.keys[0].value, "Esc");
-        assert_eq!(def.layouts.keys[2].w, 2.0);
-        assert_eq!(def.layouts.keys[2].option_index, Some(0));
-        assert_eq!(def.layouts.keys[2].option_choice, Some(0));
+    fn bundled_max102_is_original_via_source() {
+        let def = default_definition();
+        assert_eq!(def.id, "max102-342d-e537");
+        assert_eq!((def.vendor_id, def.product_id), (0x342d, 0xe537));
+        assert_eq!((def.matrix.rows, def.matrix.cols), (6, 19));
+        assert_eq!(def.layouts.keys.len(), 101);
+        assert_eq!(def.via_lighting.len(), 4);
+        assert_eq!(def.custom_keycodes[0].short_name, "DEV BT1");
+        assert_eq!(
+            def.source,
+            serde_json::from_str::<Value>(MAX102_VIA_JSON).unwrap()
+        );
     }
 
     #[test]
-    fn test_template_eval() {
-        let vars = TemplateVars {
-            row: 5,
-            col: 6,
-            val: 180,
-            hue: 120,
-            sat: 255,
-            hi: 0,
-            lo: 0,
-        };
-        let tokens = vec![
-            Value::from(7),
-            Value::from(0),
-            Value::from(3),
-            Value::from(0),
-            Value::from("$row"),
-            Value::from("$col"),
-            Value::from("$sat"),
-            Value::from("$hue"),
-        ];
-        let (cmd, args) = eval_template_bytes(&tokens, &vars).unwrap();
-        assert_eq!(cmd, 7);
-        assert_eq!(args, vec![0, 3, 0, 5, 6, 255, 120]);
+    fn persistence_roundtrip_keeps_raw_via_not_internal_shape() {
+        let raw = sample();
+        let def = parse_via_definition(&raw.to_string(), false).unwrap();
+        let saved = serde_json::to_string(&def.source).unwrap();
+        let reloaded = parse_via_definition(&saved, false).unwrap();
+        assert_eq!(reloaded.id, def.id);
+        assert_eq!(reloaded.source, raw);
+        assert_eq!(reloaded.via_lighting[1].options.len(), 45);
+        assert!(parse_via_definition(&serde_json::to_string(&def).unwrap(), false).is_err());
+    }
+
+    #[test]
+    fn rejects_custom_definitions_and_invalid_matrix_coordinates() {
+        let mut custom = sample();
+        custom["capabilities"] = json!({"lighting":{}});
+        assert!(parse_via_definition(&custom.to_string(), false).is_err());
+        custom = sample();
+        custom["layouts"] = json!({"keys":[]});
+        assert!(parse_via_definition(&custom.to_string(), false).is_err());
+        for rows in [json!(0), json!(-1), json!(256), json!(1.5)] {
+            let mut invalid = sample();
+            invalid["matrix"]["rows"] = rows;
+            assert!(parse_via_definition(&invalid.to_string(), false).is_err());
+        }
+        for id in [
+            json!(65536),
+            json!(-1),
+            json!(1.5),
+            json!("0x10000"),
+            json!("invalid"),
+        ] {
+            let mut invalid = sample();
+            invalid["vendorId"] = id;
+            assert!(parse_via_definition(&invalid.to_string(), false).is_err());
+        }
+        let mut invalid = sample();
+        invalid["matrix"]["cols"] = json!(1);
+        assert!(parse_via_definition(&invalid.to_string(), false).is_err());
+    }
+
+    #[test]
+    fn preserves_custom_effect_ids_addressing_and_conditions() {
+        let mut raw = sample();
+        raw["menus"] = json!([{"label":"Lighting","content":[{"label":"Logo","content":[
+            {"label":"Mode","type":"dropdown","content":["mode",0,12,4],"options":[["Off",0],["Pulse",73]]},
+            {"label":"Color","type":"color","content":["color",0,13],"showIf":"{mode} == 73"}
+        ]}]}]);
+        let def = parse_via_definition(&raw.to_string(), false).unwrap();
+        assert_eq!(def.via_lighting[0].arguments, vec![4]);
+        assert!(def.via_lighting[0].validate(&[73]).is_ok());
+        assert!(def.via_lighting[0].validate(&[1]).is_err());
+        assert!(def.via_lighting[1].validate(&[0, 0]).is_ok());
+        assert!(def.via_lighting[1].validate(&[0]).is_err());
+        assert_eq!(
+            def.via_lighting[1].show_if.as_deref(),
+            Some("({mode} == 73)")
+        );
+    }
+
+    #[test]
+    fn via_v2_lighting_and_physical_options_parse() {
+        let mut raw = sample();
+        raw.as_object_mut().unwrap().remove("menus");
+        raw["lighting"] = json!({"extends":"qmk_rgblight","underglowEffects":[["Off",0],["Solid",1],["Custom",1]]});
+        raw["layouts"] = json!({"labels":["Split"],"keymap":[["0,0\n\n\n0,0","0,1\n\n\n0,1"]]});
+        let def = parse_via_definition(&raw.to_string(), false).unwrap();
+        assert_eq!(def.via_lighting[1].channel, 2);
+        assert!(def.via_lighting[1].validate(&[2]).is_ok());
+        assert!(def.via_lighting[1].validate(&[3]).is_err());
+        assert_eq!(def.layouts.keys[1].option_choice, Some(1));
+        assert_eq!(def.layouts.labels.len(), 1);
     }
 }

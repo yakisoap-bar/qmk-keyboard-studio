@@ -1,3 +1,4 @@
+import max102Via from "./definitions/max102.json";
 import { describe, expect, it } from "vitest";
 import {
   decodeKeycode,
@@ -7,7 +8,7 @@ import {
   encodeModTap,
 } from "./keycodes";
 
-describe("MAX102 QMK/VIA Keycode Encoder & Decoder", () => {
+describe("QMK/VIA Keycode Encoder & Decoder", () => {
   it("encodes and decodes basic keycodes", () => {
     expect(encodeKeycodeString("KC_ESC", 11)).toBe(41);
     expect(decodeKeycode(41, 11).shortLabel).toBe("Esc");
@@ -20,11 +21,11 @@ describe("MAX102 QMK/VIA Keycode Encoder & Decoder", () => {
     expect(decodeKeycode(mo1, 11).code).toBe("MO(1)");
   });
 
-  it("encodes and decodes MAX102 custom keycodes (BT1..3, Battery)", () => {
-    const bt1 = encodeKeycodeString("CUSTOM(11)", 11);
-    expect(bt1).toBe(32512 + 11);
-    const decoded = decodeKeycode(bt1, 11);
-    expect(decoded.shortLabel).toBe("BT1");
+  it("uses custom keycodes from the VIA definition", () => {
+    const bt1 = encodeKeycodeString("CUSTOM(0)", 11);
+    expect(bt1).toBe(32512);
+    const decoded = decodeKeycode(bt1, 11, max102Via.customKeycodes);
+    expect(decoded.shortLabel).toBe("DEV BT1");
     expect(decoded.category).toBe("custom");
   });
 

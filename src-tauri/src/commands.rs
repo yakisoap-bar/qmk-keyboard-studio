@@ -5,12 +5,10 @@ use crate::hid::{
     scan_qmk_devices, ConnectionDiagnostics, DetectedQmkDevice,
 };
 use crate::models::layout::DEFAULT_LAYERS;
-use crate::models::profile::{
-    hex_to_hs, KeyboardProfile, LightingConfig, MacroSlot, PerKeyRgbCell,
-};
+use crate::models::profile::{KeyboardProfile, MacroSlot};
 use crate::models::registry::{
-    find_definition_by_id, find_definition_by_vid_pid, generic_fallback_definition,
-    load_all_definitions, remove_user_definition, save_user_definition, KeyboardDefinition,
+    find_definition_by_id, find_definition_by_vid_pid, load_all_definitions,
+    remove_user_definition, save_user_definition, KeyboardDefinition,
 };
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -28,13 +26,6 @@ pub struct DevicesAndDefinitionsResponse {
     pub definitions: Vec<KeyboardDefinition>,
     #[serde(rename = "activeDefinition")]
     pub active_definition: KeyboardDefinition,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct KeyColorUpdateInput {
-    pub row: u8,
-    pub col: u8,
-    pub hex: String,
 }
 
 #[tauri::command]
@@ -169,13 +160,12 @@ fn connect_with_options(
 
         // If an explicit definition_id was requested, load it first
         if let Some(ref def_id) = definition_id {
-            if let Some(found) = find_definition_by_id(def_id) {
-                session.definition = found;
-            }
+            session.definition = find_definition_by_id(def_id)
+                .ok_or_else(|| format!("Unknown VIA definition: {}", def_id))?;
         }
 
         // If an explicit definition_id was requested without a USB VID:PID (e.g. from "Offline / Layout Preview Definitions")
-        // and the definition has no hardware VID:PID (0x0000:0x0000, such as Generic 104-Key), enter Offline/Preview mode directly
+        // and the definition has no hardware VID:PID (0x0000:0x0000), enter Offline/Preview mode directly
         // rather than opening an unrelated USB keyboard and reading its matrix into the wrong dimensions.
         if definition_id.is_some()
             && vendor_id.is_none()
@@ -237,16 +227,13 @@ fn connect_with_options(
                     if let Some(ref m) = matched_def {
                         session.definition = m.clone();
                     } else {
-                        let mut fallback = generic_fallback_definition();
-                        fallback.vendor_id = proto.vendor_id;
-                        fallback.product_id = proto.product_id;
-                        if !proto.product_name.trim().is_empty() {
-                            fallback.name = format!("{} (Generic 104 Fallback)", proto.product_name);
-                        }
-                        session.definition = fallback;
+                        return Err(format!("No VIA definition matches {:04x}:{:04x}. Import the keyboard's VIA JSON before connecting.", proto.vendor_id, proto.product_id));
                     }
                 }
 
+                if session.definition.vendor_id != proto.vendor_id || session.definition.product_id != proto.product_id {
+                    return Err("The selected VIA definition does not match the connected keyboard's USB IDs".to_owned());
+                }
                 let profile =
                     read_full_profile_from_device(&proto, &session.definition, "Hardware Live")
                         .map_err(|e| {
@@ -372,10 +359,7 @@ pub fn set_single_key(
 }
 
 #[tauri::command]
-pub fn write_all_layers(
-    queue: State<'_, HidQueue>,
-    layers: Vec<Vec<u16>>,
-) -> Result<(), String> {
+pub fn write_all_layers(queue: State<'_, HidQueue>, layers: Vec<Vec<u16>>) -> Result<(), String> {
     if !queue.is_connected() {
         return Ok(());
     }
@@ -398,171 +382,7 @@ pub fn set_layout_options_cmd(
 }
 
 #[tauri::command]
-pub fn update_lighting_config(
-    queue: State<'_, HidQueue>,
-    config: LightingConfig,
-    commit: bool,
-) -> Result<(), String> {
-    if !queue.is_connected() {
-        return Ok(());
-    }
-    queue
-        .with_device(|dev, def| {
-            dev.set_effect_brightness(def, config.brightness, false)?;
-            dev.set_effect_speed(def, config.speed, false)?;
-            dev.set_effect_color(def, config.hue, config.sat, false)?;
-            dev.set_rgb_mode(def, config.mode, commit)?;
-            Ok(())
-        })
-        .map_err(|e| format!("{:#}", e))
-}
-
-#[tauri::command]
-pub fn set_rgb_mode_cmd(
-    queue: State<'_, HidQueue>,
-    mode: u8,
-    commit: bool,
-) -> Result<(), String> {
-    if !queue.is_connected() {
-        return Ok(());
-    }
-    queue
-        .with_device(|dev, def| dev.set_rgb_mode(def, mode, commit))
-        .map_err(|e| format!("{:#}", e))
-}
-
-#[tauri::command]
-pub fn set_effect_brightness_cmd(
-    queue: State<'_, HidQueue>,
-    brightness: u8,
-    commit: bool,
-) -> Result<(), String> {
-    if !queue.is_connected() {
-        return Ok(());
-    }
-    queue
-        .with_device(|dev, def| dev.set_effect_brightness(def, brightness, commit))
-        .map_err(|e| format!("{:#}", e))
-}
-
-#[tauri::command]
-pub fn set_effect_speed_cmd(
-    queue: State<'_, HidQueue>,
-    speed: u8,
-    commit: bool,
-) -> Result<(), String> {
-    if !queue.is_connected() {
-        return Ok(());
-    }
-    queue
-        .with_device(|dev, def| dev.set_effect_speed(def, speed, commit))
-        .map_err(|e| format!("{:#}", e))
-}
-
-#[tauri::command]
-pub fn set_effect_color_cmd(
-    queue: State<'_, HidQueue>,
-    hex: String,
-    commit: bool,
-) -> Result<(u8, u8), String> {
-    let (h, s) = hex_to_hs(&hex);
-    if !queue.is_connected() {
-        return Ok((h, s));
-    }
-    queue
-        .with_device(|dev, def| {
-            dev.set_effect_color(def, h, s, commit)?;
-            Ok((h, s))
-        })
-        .map_err(|e| format!("{:#}", e))
-}
-
-#[tauri::command]
-pub fn set_per_key_colors_batch_cmd(
-    queue: State<'_, HidQueue>,
-    updates: Vec<KeyColorUpdateInput>,
-    unified_spacebar: bool,
-    commit: bool,
-) -> Result<Vec<PerKeyRgbCell>, String> {
-    let mut raw_updates = Vec::with_capacity(updates.len());
-    let mut out_cells = Vec::with_capacity(updates.len());
-
-    for item in &updates {
-        let cell = PerKeyRgbCell::from_hex(item.row, item.col, &item.hex);
-        raw_updates.push((cell.row, cell.col, cell.h, cell.s));
-        out_cells.push(cell);
-    }
-
-    if queue.is_connected() {
-        queue
-            .with_device(|dev, def| {
-                dev.set_key_colors_batch(def, &raw_updates, unified_spacebar, commit)
-            })
-            .map_err(|e| format!("{:#}", e))?;
-    }
-
-    Ok(out_cells)
-}
-
-#[tauri::command]
-pub fn commit_per_key_colors_cmd(queue: State<'_, HidQueue>) -> Result<(), String> {
-    if !queue.is_connected() {
-        return Ok(());
-    }
-    queue
-        .with_device(|dev, def| dev.save_key_colors(def))
-        .map_err(|e| format!("{:#}", e))
-}
-
-#[tauri::command]
-pub fn read_per_key_colors_cmd(queue: State<'_, HidQueue>) -> Result<Vec<PerKeyRgbCell>, String> {
-    if !queue.is_connected() {
-        return Ok(default_offline_profile(&queue.active_definition()).per_key_rgb);
-    }
-    queue
-        .with_device(|dev, def| dev.get_all_key_colors(def))
-        .map_err(|e| format!("{:#}", e))
-}
-
-#[tauri::command]
-pub fn set_custom_control_cmd(
-    queue: State<'_, HidQueue>,
-    control_id: String,
-    value: u8,
-) -> Result<(), String> {
-    if !queue.is_connected() {
-        return Ok(());
-    }
-    queue
-        .with_device(|dev, def| {
-            let Some(ctrl) = def
-                .capabilities
-                .custom_controls
-                .iter()
-                .find(|c| c.id == control_id)
-            else {
-                return Ok(());
-            };
-            dev.set_custom_control(ctrl, value)
-        })
-        .map_err(|e| format!("{:#}", e))
-}
-
-#[tauri::command]
-pub fn set_sleep_timeout_cmd(queue: State<'_, HidQueue>, timeout: u8) -> Result<(), String> {
-    set_custom_control_cmd(queue, "sleep_timeout".to_string(), timeout)
-}
-
-#[tauri::command]
-pub fn set_nkro_cmd(queue: State<'_, HidQueue>, enabled: bool) -> Result<(), String> {
-    set_custom_control_cmd(queue, "nkro".to_string(), u8::from(enabled))
-}
-
-#[tauri::command]
-pub fn save_macros_cmd(
-    queue: State<'_, HidQueue>,
-    macros: Vec<MacroSlot>,
-) -> Result<(), String> {
+pub fn save_macros_cmd(queue: State<'_, HidQueue>, macros: Vec<MacroSlot>) -> Result<(), String> {
     if !queue.is_connected() {
         return Ok(());
     }
@@ -603,6 +423,34 @@ pub fn factory_reset_cmd(queue: State<'_, HidQueue>) -> Result<KeyboardProfile, 
         .with_device(|dev, def| {
             dev.reset_eeprom()?;
             read_full_profile_from_device(dev, def, "Factory Restored")
+        })
+        .map_err(|e| format!("{:#}", e))
+}
+
+#[tauri::command]
+pub fn set_via_lighting_cmd(
+    queue: State<'_, HidQueue>,
+    control_id: String,
+    value: Vec<u8>,
+) -> Result<(), String> {
+    let definition = queue.active_definition();
+    let ctrl = definition
+        .via_lighting
+        .iter()
+        .find(|c| c.id == control_id)
+        .ok_or_else(|| "Unknown VIA lighting control".to_string())?;
+    ctrl.validate(&value).map_err(|e| e.to_string())?;
+    if !queue.is_connected() {
+        return Ok(());
+    }
+    queue
+        .with_device(|dev, def| {
+            let ctrl = def
+                .via_lighting
+                .iter()
+                .find(|c| c.id == control_id)
+                .ok_or_else(|| anyhow::anyhow!("Unknown VIA lighting control"))?;
+            dev.set_via_lighting(ctrl, &value, true)
         })
         .map_err(|e| format!("{:#}", e))
 }
