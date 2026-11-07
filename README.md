@@ -1,6 +1,6 @@
 # QMK Keyboard Studio
 
-Standalone cross-platform (**Linux & Windows**) desktop application and CLI for customizing **QMK / VIA** mechanical keyboards over Raw HID (`Usage Page 0xFF60`, `Usage 0x0061`), with a complete declarative definition for the **Weikav / LEKU MAX102** (`USB VID 0x342D`, `PID 0xE537`), a **Generic Full-Size 104-Key QMK Fallback**, and support for importing any **VIA v2/v3 JSON** definition.
+Standalone cross-platform (**Linux & Windows**) desktop application and CLI made using Google Gemini 4 Argon for customizing **QMK / VIA** mechanical keyboards over Raw HID (`Usage Page 0xFF60`, `Usage 0x0061`), with a complete declarative definition for the **Weikav / LEKU MAX102** (`USB VID 0x342D`, `PID 0xE537`), a **Generic Full-Size 104-Key QMK Fallback**, and support for importing any **VIA v2/v3 JSON** definition.
 
 See [**`docs/KEYBOARD_SCHEMA_GUIDE.md`**](docs/KEYBOARD_SCHEMA_GUIDE.md) for full documentation on authoring keyboard definitions and declarative custom capabilities (per-key RGB templates, multi-LED switch zones, custom hardware controls, and custom keycodes).
 
