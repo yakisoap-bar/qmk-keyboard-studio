@@ -1,0 +1,4 @@
+# Weikav / LEKU MAX102 Keyboard (VID 0x342d, PID 0xe537)
+# Grants non-root user read/write access to Raw HID (Usage Page 0xFF60, Usage 0x61) and USB interfaces
+KERNEL=="hidraw*", ATTRS{idVendor}=="342d", ATTRS{idProduct}=="e537", GROUP="plugdev", MODE="0666", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTR{idVendor}=="342d", ATTR{idProduct}=="e537", GROUP="plugdev", MODE="0666", TAG+="uaccess"
